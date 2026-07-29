@@ -1,0 +1,210 @@
+HEADQUATORS
+
+Router > en
+Router #conf t
+Router(config)#int gig 0/0/0
+Router(config)#no shut
+               ip add 192.168.10.1 255.255.255.0
+               exit
+Router(config)#int gig 0/0/1
+Router(config)#no shut
+               ip add 10.10.10.1 255.255.255.252
+               exit
+ISP router
+
+Router > en
+Router #conf t
+Router(config)#int gig 0/0/0
+Router(config)#no shut
+               ip add 100.50.10.1 255.255.255.252
+                exit
+Router(config)#int gig 0/0/1
+Router(config)#no shut
+               ip add 100.50.10.5 255.255.255.252
+               exit
+BRANCH ROUTER
+
+Router > en
+Router #conf t
+Router(config)#int gig 0/0/0
+Router(config)#no shut
+               ip add 192.168.20.1 255.255.255.0
+                exit
+Router(config)#int gig 0/0/1
+Router(config)#no shut
+               ip add 10.10.10.5 255.255.255.252
+               exit
+
+CONFIGURING OSPF ON ALL ROUTER
+
+HQ
+Router(config)#router ospf 10
+               network 192.168.10.0 0.0.0.255 area 0
+               network 10.10.10.0 0.0.0.3 area 0
+ISP
+Router(config)#router ospf 10
+               network 100.50.10.0 0.0.0.3 area 0
+               network 100.50.10.4 0.0.0.3 area 0
+BRANCH
+Router(config)#router ospf 10
+               network 10.10.10.4 0.0.0.3 area 0
+               network 192.168.20.0 0.0.0.255 area 0
+
+FIREWALL ASA HEADQUATORS
+
+ciscoasa>en
+ciscoasa#conf t
+ciscoasa(config)#int gig 1/1
+                 no shut
+                 ip add 10.10.10.2 255.255.255.252
+                 nameif INSIDE
+                 security-level 100
+ciscoasa(config)#int gig 1/2
+                 no shut
+                 ip add 100.50.10.2 255.255.255.252
+                 nameif OUTSIDE
+                 security-level 0
+                 exit
+
+OBJECT + NAT ON ASA FWL
+
+ciscoasa(config)#object network NET1
+ciscoasa(config-network-object)#subnet 192.168.10.0 255.255.255.0
+ciscoasa(config-network-object)#nat (INSIDE,OUTSIDE) dynamic interface
+                                exit
+
+FWL INSPECTION POLICIES ON ASA FWL
+
+ciscoasa(config)#access-list RES2 extended permit icmp any any
+                 access-list RES2 extended permit tcp any any eq 80
+                 access-list RES2 extended permit tcp any any eq 443
+                 
+ciscoasa(config)#access-group RES2 in interface OUTSIDE
+
+ NAT + DEFAULT ROUTE ON ASA FWL  
+              
+ciscoasa(config)#router ospf 10
+                 network 100.50.10.0 255.255.255.252 area 0
+                 network 10.10.10.0 255.255.255.252 area 0
+
+ciscoasa(config)#route OUTSIDE 0.0.0.0 0.0.0.0 100.50.10.1
+
+
+FIREWALL ASA BRANCH
+
+ciscoasa>en
+ciscoasa#conf t
+ciscoasa(config)#int gig 1/1
+                 no shut
+                 ip add 10.10.10.6 255.255.255.252
+                 nameif INSIDE
+                 security-level 100
+ciscoasa(config)#int gig 1/2
+                 no shut
+                 ip add 100.50.10.6 255.255.255.252
+                 nameif OUTSIDE
+                 security-level 0
+                 exit
+
+OBJECT + NAT ON ASA FWL
+
+ciscoasa(config)#object network NET2
+ciscoasa(config-network-object)#subnet 192.168.20.0 255.255.255.0
+ciscoasa(config-network-object)#nat (INSIDE,OUTSIDE) dynamic interface
+                                exit
+
+FWL INSPECTION POLICIES ON ASA FWL
+
+ciscoasa(config)#access-list RES1 extended permit icmp any any
+                 access-list RES1 extended permit tcp any any eq 80
+                 access-list RES1 extended permit tcp any any eq 443
+                 
+ciscoasa(config)#access-group RES1 in interface OUTSIDE
+
+ NAT + DEFAULT ROUTE ON ASA FWL  
+              
+ciscoasa(config)#router ospf 10
+                 network 100.50.10.4 255.255.255.252 area 0
+                 network 10.10.10.4 255.255.255.252 area 0
+
+ciscoasa(config)#route OUTSIDE 0.0.0.0 0.0.0.0 100.50.10.5
+
+SITE TO SITE IPSEC VPN CONFIGURATION
+HQ:
+
+crypto ikev1 policy 10
+hash sha
+authentication pre-share
+group 2
+lifetime 86400
+encryption 3des
+exit
+
+tunnel-group 100.50.10.6 type ipsec-l2l
+tunnel-group 100.50.10.6 IPsec-attributes
+ikev1 pre-shared-key cisco
+exit
+
+crypto IPsec ikev1 transformer-set TSET esp-3des esp-sha-hmac
+
+access-list VPN-ACL permit ip 192.168.10.0 255.255.255.0 192.168.20.0 255.255.255.0
+
+crypto map CMAP 10 set peer 100.50.10.6
+crypto map CMAP 10 set ikev1 transformer-set TSET
+crypto map CMAP 10 match address VPN-ACL
+crypto map CMAP interface OUTSIDE
+crypto ikev1 enable OUTSIDE
+
+wr mem
+
+SITE TO SITE IPSEC VPN CONFIGURATION
+BRANCH:
+
+crypto ikev1 policy 10
+hash sha
+authentication pre-share
+group 2
+lifetime 86400
+encryption 3des
+exit
+
+tunnel-group 100.50.10.2 type ipsec-l2l
+tunnel-group 100.50.10.2 IPsec-attributes
+ikev1 pre-shared-key cisco
+exit
+
+crypto IPsec ikev1 transformer-set TSET esp-3des esp-sha-hmac
+
+access-list VPN-ACL permit ip 192.168.20.0 255.255.255.0 192.168.10.0 255.255.255.0
+
+crypto map CMAP 10 set peer 100.50.10.2
+crypto map CMAP 10 set ikev1 transformer-set TSET
+crypto map CMAP 10 match address VPN-ACL
+crypto map CMAP interface OUTSIDE
+crypto ikev1 enable OUTSIDE
+
+wr mem
+
+
+
+ciscoasa#show crypto IPsec sa
+ciscoasa#show crypto isakmp sa
+
+
+
+
+
+
+                
+
+
+
+
+
+
+
+
+
+
+
+
